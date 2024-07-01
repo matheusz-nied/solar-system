@@ -40,6 +40,7 @@ function App() {
       map: sunTexture,
     });
     const sunMesh = new THREE.Mesh(sunGeometry, sunMaterial);
+    sunMesh.rotation.x = Math.PI / 4;
     solarSystemGroup.add(sunMesh);
     solarSystem.scene.add(solarSystemGroup);
 
@@ -49,6 +50,7 @@ function App() {
       map: mercuryTexture,
     });
     const mercuryMesh = new THREE.Mesh(mercuryGeometry, mercuryMaterial);
+    mercuryMesh.rotation.x = Math.PI / 4;
     mercuryOrbit.add(mercuryMesh);
     mercuryMesh.position.x = 45;
     solarSystem.scene.add(mercuryOrbit);
@@ -59,6 +61,7 @@ function App() {
       map: venusTexture,
     });
     const venusMesh = new THREE.Mesh(venusGeometry, venusMaterial);
+    venusMesh.rotation.x = Math.PI / 4;
     venusOrbit.add(venusMesh);
     venusMesh.position.x = 80;
     solarSystem.scene.add(venusOrbit);
@@ -69,6 +72,7 @@ function App() {
       map: earthTexture,
     });
     const earthMesh = new THREE.Mesh(earthGeometry, earthMaterial);
+    earthMesh.rotation.x = Math.PI / 4;
     earthMesh.position.x = 115;
     earthOrbit.add(earthMesh);
     solarSystem.scene.add(earthOrbit);
@@ -79,6 +83,7 @@ function App() {
       map: moonTexture,
     });
     const moonMesh = new THREE.Mesh(moonGeometry, moonMaterial);
+    moonMesh.rotation.x = Math.PI / 4;
     moonOrbit.add(moonMesh);
     moonOrbit.position.x = 115;
     moonMesh.position.x = 7;
@@ -90,6 +95,7 @@ function App() {
       map: marsTexture,
     });
     const marsMesh = new THREE.Mesh(marsGeometry, marsMaterial);
+    marsMesh.rotation.x = Math.PI / 4;
     marsOrbit.add(marsMesh);
     marsMesh.position.x = 185;
     solarSystem.scene.add(marsOrbit);
@@ -100,6 +106,7 @@ function App() {
       map: jupiterTexture,
     });
     const jupiterMesh = new THREE.Mesh(jupiterGeometry, jupiterMaterial);
+    jupiterMesh.rotation.x = Math.PI / 4;
     jupiterOrbit.add(jupiterMesh);
     jupiterMesh.position.x = 220;
     solarSystem.scene.add(jupiterOrbit);
@@ -110,6 +117,7 @@ function App() {
       map: saturnTexture,
     });
     const saturnMesh = new THREE.Mesh(saturnGeometry, saturnMaterial);
+    saturnMesh.rotation.x = Math.PI / 4;
     saturnOrbit.add(saturnMesh);
     saturnMesh.position.x = 255;
     solarSystem.scene.add(saturnOrbit);
@@ -120,6 +128,7 @@ function App() {
       map:saturnRingTexture
     });
     const saturnRingMesh = new THREE.Mesh(saturnRingGeometry, saturnRingMaterial);
+    saturnRingMesh.rotation.y = Math.PI / 2;
     saturnRingMesh.rotation.x = Math.PI / 2;
     saturnRingOrbit.add(saturnRingMesh);
     saturnRingOrbit.position.x = 255;
@@ -132,6 +141,7 @@ function App() {
       map: uranusTexture,
     });
     const uranusMesh = new THREE.Mesh(uranusGeometry, uranusMaterial);
+    uranusMesh.rotation.x = Math.PI / 4;
     uranusOrbit.add(uranusMesh);
     uranusMesh.position.x = 325;
     solarSystem.scene.add(uranusOrbit);
@@ -142,6 +152,7 @@ function App() {
       map: neptuneTexture,
     });
     const neptuneMesh = new THREE.Mesh(neptuneGeometry, neptuneMaterial);
+    neptuneMesh.rotation.x = Math.PI / 4;
     neptuneOrbit.add(neptuneMesh);
     neptuneMesh.position.x = 360;
     solarSystem.scene.add(neptuneOrbit);
