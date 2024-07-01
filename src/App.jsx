@@ -13,24 +13,24 @@ function App() {
     const axesHelper = new THREE.AxesHelper(16);
     solarSystem.scene.add(axesHelper);
 
-    const sunTexture = new THREE.TextureLoader().load('./assets/sun.jpeg');
+    const sunTexture = new THREE.TextureLoader().load('../assets/sun.jpeg');
     const mercuryTexture = new THREE.TextureLoader().load(
-      './assets/mercury.jpg'
+      '../assets/mercury.jpg'
     );
-    const venusTexture = new THREE.TextureLoader().load('./assets/venus.jpg');
-    const moonTexture = new THREE.TextureLoader().load('./assets/moon.jpeg');
-    const earthTexture = new THREE.TextureLoader().load('./assets/earth.jpeg');
-    const marsTexture = new THREE.TextureLoader().load('./assets/mars.jpg');
+    const venusTexture = new THREE.TextureLoader().load('../assets/venus.jpg');
+    const moonTexture = new THREE.TextureLoader().load('../assets/moon.jpeg');
+    const earthTexture = new THREE.TextureLoader().load('../assets/earth.jpeg');
+    const marsTexture = new THREE.TextureLoader().load('../assets/mars.jpg');
     const jupiterTexture = new THREE.TextureLoader().load(
-      './assets/jupiter.jpg'
+      '../assets/jupiter.jpg'
     );
-    const saturnTexture = new THREE.TextureLoader().load('./assets/saturn.jpg');
+    const saturnTexture = new THREE.TextureLoader().load('../assets/saturn.jpg');
     const saturnRingTexture = new THREE.TextureLoader().load(
-      './assets/saturn_ring.png'
+      '../assets/saturn_ring.png'
     );
-    const uranusTexture = new THREE.TextureLoader().load('./assets/uranus.jpg');
+    const uranusTexture = new THREE.TextureLoader().load('../assets/uranus.jpg');
     const neptuneTexture = new THREE.TextureLoader().load(
-      './assets/neptune.jpg'
+      '../assets/neptune.jpg'
     );
 
     const solarSystemGroup = new THREE.Group();
