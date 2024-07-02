@@ -147,6 +147,19 @@ function App() {
     neptuneMesh.position.x = 360;
     solarSystem.scene.add(neptuneOrbit);
 
+
+    moonOrbit.rotation.y += 0.01;
+    mercuryOrbit.rotation.y += 0.008;
+    venusOrbit.rotation.y += 0.005;
+    earthOrbit.rotation.y += 0.003;
+    marsOrbit.rotation.y += 0.002;
+    jupiterOrbit.rotation.y += 0.1;
+    saturnOrbit.rotation.y += 0.2;
+    saturnRingOrbit.rotation.y += 0.3;
+    uranusOrbit.rotation.y += 0.5;
+
+    neptuneOrbit.rotation.y += 0.0001;
+
     const animate = () => {
       sunMesh.rotation.y += 0.003;
       moonOrbit.rotation.y += 0.01;
