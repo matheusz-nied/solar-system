@@ -1,0 +1,61 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build outputs
+dist/
+build/
+*.bundle.js
+
+# Vite
+.vite/
+.cache/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.production.local
+
+# IDE & Editor
+.vscode/
+.idea/
+.DS_Store
+.vscode-settings.json
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# Editor temp files
+*.swp
+*.swo
+*~
+*.swn
+.eslintcache
+
+# OS files
+Thumbs.db
+*.log
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Development
+*.tsbuildinfo
+.turbo/
+.eslintcache
+.stylelintcache
+
+# Dependency directories
+.pnp
+.pnp.js
+
+# Misc
+.DS_Store
+*.pem
