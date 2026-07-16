@@ -202,7 +202,7 @@ export default class SceneInit {
     this._addSunLensflare();
 
     // Background objects ---------------------------------------------------
-    this.starField = createStarField({ count: 6000, radius: SCENE_RADIUS });
+    this.starField = createStarField({ count: 9000, radius: SCENE_RADIUS });
     this.scene.add(this.starField);
 
     this.galaxies = createGalaxies(SCENE_RADIUS);

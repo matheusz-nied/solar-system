@@ -1,217 +1,100 @@
 import * as THREE from 'three';
 
-// Multi-layer starfield built entirely from point objects (no background texture).
-// - Distant faint dust (tiny points)
-// - Mid-field stars with twinkle and subtle color
-// - Bright nearby stars with procedural diffraction spikes and glow halo
-//
-// Everything is rendered as additive point clouds so the background stays a
-// pure black void while the stars themselves are real, individual objects.
+// Adapted from the visual direction used on the fable branch: one deep shell
+// of individually coloured stars, with varied apparent size and a slow,
+// asynchronous twinkle. The values are calibrated for this branch's smaller
+// scene radius and camera far plane.
+const vertexShader = /* glsl */ `
+  attribute float aSize;
+  attribute float aPhase;
+  attribute vec3 aColor;
+  uniform float uTime;
+  uniform float uPixelRatio;
+  varying vec3 vColor;
+  varying float vTwinkle;
 
-const STAR_PALETTE = [
-  new THREE.Color(0xffffff), // white  (A-type)
-  new THREE.Color(0xc8d4ff), // blue   (O/B-type)
-  new THREE.Color(0xfff4e8), // warm white (F-type)
-  new THREE.Color(0xffe2a8), // yellow (G-type, like the Sun)
-  new THREE.Color(0xffb27a), // orange (K-type)
-  new THREE.Color(0xff8a6a), // red    (M-type)
+  void main() {
+    vColor = aColor;
+    float speed = 0.45 + aPhase * 0.75;
+    vTwinkle = 0.72 + 0.28 * sin(uTime * speed + aPhase * 40.0);
+    vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    gl_PointSize = clamp(aSize * uPixelRatio * (760.0 / -mv.z), 0.55, 4.2);
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+const fragmentShader = /* glsl */ `
+  varying vec3 vColor;
+  varying float vTwinkle;
+
+  void main() {
+    vec2 p = gl_PointCoord - vec2(0.5);
+    float d = length(p);
+    if (d > 0.5) discard;
+    float core = 1.0 - smoothstep(0.02, 0.16, d);
+    float halo = 1.0 - smoothstep(0.08, 0.5, d);
+    float alpha = (core + halo * 0.72) * vTwinkle;
+    gl_FragColor = vec4(vColor * (0.72 + core * 0.55), alpha);
+  }
+`;
+
+const STAR_COLORS = [
+  [1.00, 1.00, 1.00],
+  [0.68, 0.80, 1.00],
+  [0.86, 0.92, 1.00],
+  [1.00, 0.91, 0.72],
+  [1.00, 0.72, 0.50],
 ];
 
-function pickStarColor() {
-  const c = STAR_PALETTE[Math.floor(Math.random() * STAR_PALETTE.length)];
-  return c.clone().multiplyScalar(0.55 + Math.random() * 0.45);
-}
-
-function buildDustLayer({ count, radius }) {
+export function createStarField({ count = 9000, radius = 1800 } = {}) {
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
   const sizes = new Float32Array(count);
-  const seeds = new Float32Array(count);
+  const phases = new Float32Array(count);
 
   for (let i = 0; i < count; i++) {
-    const u = Math.random();
-    const v = Math.random();
-    const theta = 2 * Math.PI * u;
-    const phi = Math.acos(2 * v - 1);
-    const r = radius * (0.9 + Math.random() * 0.15);
-    positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-    positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-    positions[i * 3 + 2] = r * Math.cos(phi);
+    const y = Math.random() * 2 - 1;
+    const theta = Math.random() * Math.PI * 2;
+    const r = radius * (0.88 + Math.random() * 0.16);
+    const ring = Math.sqrt(1 - y * y);
+    positions[i * 3] = r * ring * Math.cos(theta);
+    positions[i * 3 + 1] = r * y;
+    positions[i * 3 + 2] = r * ring * Math.sin(theta);
 
-    const c = pickStarColor().multiplyScalar(0.35 + Math.random() * 0.4);
-    colors[i * 3] = c.r;
-    colors[i * 3 + 1] = c.g;
-    colors[i * 3 + 2] = c.b;
+    const palette = STAR_COLORS[Math.floor(Math.random() * STAR_COLORS.length)];
+    const brightness = 0.42 + Math.random() * 0.58;
+    colors[i * 3] = palette[0] * brightness;
+    colors[i * 3 + 1] = palette[1] * brightness;
+    colors[i * 3 + 2] = palette[2] * brightness;
 
-    sizes[i] = 0.6 + Math.random() * 0.8;
-    seeds[i] = Math.random() * 1000;
+    // Most stars stay tiny; a few become bright landmarks in the sky.
+    sizes[i] = 1.4 + Math.pow(Math.random(), 4) * 7.5;
+    phases[i] = Math.random();
   }
 
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geo.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-  geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
+  geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
 
-  const mat = new THREE.ShaderMaterial({
+  const material = new THREE.ShaderMaterial({
+    vertexShader,
+    fragmentShader,
     uniforms: {
-      uPixelRatio: { value: window.devicePixelRatio || 1 },
       uTime: { value: 0 },
+      uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) },
     },
-    vertexShader: /* glsl */ `
-      attribute float aSize;
-      attribute float aSeed;
-      attribute vec3 color;
-      varying vec3 vColor;
-      varying float vTwinkle;
-      uniform float uPixelRatio;
-      uniform float uTime;
-      void main() {
-        vColor = color;
-        float tw = 0.65 + 0.35 * sin(uTime * 1.8 + aSeed * 6.2831);
-        vTwinkle = tw;
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = aSize * uPixelRatio * (300.0 / -mv.z) * tw;
-        gl_Position = projectionMatrix * mv;
-      }
-    `,
-    fragmentShader: /* glsl */ `
-      varying vec3 vColor;
-      varying float vTwinkle;
-      void main() {
-        vec2 c = gl_PointCoord - vec2(0.5);
-        float d = length(c);
-        if (d > 0.5) discard;
-        float core = smoothstep(0.5, 0.0, d);
-        float halo = smoothstep(0.5, 0.18, d) * 0.4;
-        float a = clamp(core + halo, 0.0, 1.0) * vTwinkle;
-        gl_FragColor = vec4(vColor, a);
-      }
-    `,
-    vertexColors: true,
     transparent: true,
     depthWrite: false,
     blending: THREE.AdditiveBlending,
   });
 
-  const points = new THREE.Points(geo, mat);
-  points.frustumCulled = false;
-  return points;
-}
-
-function buildBrightLayer({ count, radius }) {
-  const positions = new Float32Array(count * 3);
-  const colors = new Float32Array(count * 3);
-  const sizes = new Float32Array(count);
-  const seeds = new Float32Array(count);
-
-  for (let i = 0; i < count; i++) {
-    const u = Math.random();
-    const v = Math.random();
-    const theta = 2 * Math.PI * u;
-    const phi = Math.acos(2 * v - 1);
-    const r = radius * (0.8 + Math.random() * 0.4);
-    positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-    positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-    positions[i * 3 + 2] = r * Math.cos(phi);
-
-    const c = pickStarColor();
-    colors[i * 3] = c.r;
-    colors[i * 3 + 1] = c.g;
-    colors[i * 3 + 2] = c.b;
-
-    // A small fraction are very bright "named" stars with spikes
-    const roll = Math.random();
-    sizes[i] = roll < 0.04 ? 6.0 + Math.random() * 3.0
-      : roll < 0.18 ? 3.0 + Math.random() * 1.5
-      : 1.4 + Math.random() * 1.0;
-    seeds[i] = Math.random() * 1000;
-  }
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geo.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-  geo.setAttribute('aSeed', new THREE.BufferAttribute(seeds, 1));
-
-  const mat = new THREE.ShaderMaterial({
-    uniforms: {
-      uPixelRatio: { value: window.devicePixelRatio || 1 },
-      uTime: { value: 0 },
-    },
-    vertexShader: /* glsl */ `
-      attribute float aSize;
-      attribute float aSeed;
-      attribute vec3 color;
-      varying vec3 vColor;
-      varying float vTwinkle;
-      varying float vSpike;
-      uniform float uPixelRatio;
-      uniform float uTime;
-      void main() {
-        vColor = color;
-        float tw = 0.7 + 0.3 * sin(uTime * 2.4 + aSeed * 6.2831);
-        vTwinkle = tw;
-        vSpike = step(4.5, aSize);
-        vec4 mv = modelViewMatrix * vec4(position, 1.0);
-        gl_PointSize = aSize * uPixelRatio * (300.0 / -mv.z) * (0.9 + 0.2 * tw);
-        gl_Position = projectionMatrix * mv;
-      }
-    `,
-    fragmentShader: /* glsl */ `
-      varying vec3 vColor;
-      varying float vTwinkle;
-      varying float vSpike;
-      void main() {
-        vec2 c = gl_PointCoord - vec2(0.5);
-        float d = length(c);
-        if (d > 0.5) discard;
-
-        // Soft core + halo
-        float core = smoothstep(0.5, 0.0, d);
-        float halo = smoothstep(0.5, 0.22, d) * 0.55;
-
-        // Cross-shaped diffraction spikes for bright stars
-        float spike = 0.0;
-        if (vSpike > 0.5) {
-          float ax = abs(c.x);
-          float ay = abs(c.y);
-          float sH = smoothstep(0.5, 0.0, ay) * smoothstep(0.5, 0.0, ax * 6.0);
-          float sV = smoothstep(0.5, 0.0, ax) * smoothstep(0.5, 0.0, ay * 6.0);
-          spike = (sH + sV) * 0.7;
-        }
-
-        float a = clamp(core + halo + spike, 0.0, 1.0) * vTwinkle;
-        gl_FragColor = vec4(vColor * (0.8 + 0.5 * core), a);
-      }
-    `,
-    vertexColors: true,
-    transparent: true,
-    depthWrite: false,
-    blending: THREE.AdditiveBlending,
-  });
-
-  const points = new THREE.Points(geo, mat);
-  points.frustumCulled = false;
-  return points;
-}
-
-export function createStarField({ count = 5000, radius = 1800 } = {}) {
-  const group = new THREE.Group();
-  group.name = 'starField';
-
-  const dust = buildDustLayer({ count: Math.floor(count * 0.6), radius: radius * 1.05 });
-  dust.name = 'starField-dust';
-  group.add(dust);
-
-  const bright = buildBrightLayer({ count: Math.floor(count * 0.4), radius });
-  bright.name = 'starField-bright';
-  group.add(bright);
-
-  group.userData.update = (t) => {
-    dust.material.uniforms.uTime.value = t;
-    bright.material.uniforms.uTime.value = t;
+  const stars = new THREE.Points(geometry, material);
+  stars.name = 'starField';
+  stars.frustumCulled = false;
+  stars.userData.update = (t) => {
+    material.uniforms.uTime.value = t;
   };
-
-  return group;
+  return stars;
 }
