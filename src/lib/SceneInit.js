@@ -12,7 +12,6 @@ import { createGalaxies } from './Galaxy';
 import { createNebulae } from './Nebula';
 import { createAsteroidBelt, createKuiperBelt } from './AsteroidBelt';
 import { createComets } from './Comet';
-import { createOrbitLine, createEllipseLine } from './OrbitLines';
 import { createPostFX } from './PostFX';
 
 const SCENE_RADIUS = 1800;
@@ -24,7 +23,8 @@ function makeFlareTexture(size, inner) {
   const ctx = c.getContext('2d');
   const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
   g.addColorStop(0, `rgba(255,255,255,${inner})`);
-  g.addColorStop(0.25, 'rgba(255,255,255,0.55)');
+  g.addColorStop(0.18, `rgba(255,255,255,${inner * 0.16})`);
+  g.addColorStop(0.55, `rgba(255,255,255,${inner * 0.025})`);
   g.addColorStop(1, 'rgba(255,255,255,0)');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
@@ -128,7 +128,9 @@ export default class SceneInit {
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.0;
+    // Leave enough highlight headroom for the Sun while keeping planet
+    // textures saturated. ACES will roll off the solar core smoothly.
+    this.renderer.toneMappingExposure = 0.78;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -162,15 +164,22 @@ export default class SceneInit {
 
     // Sun is the dominant light source. High intensity, no decay so distant
     // planets still receive light (realistic inverse-square would be too dark).
-    this.sunLight = new THREE.PointLight(0xfff2d6, 3.2, 0, 0);
+    this.sunLight = new THREE.PointLight(0xfff1d8, 3.6, 0, 0);
     this.sunLight.position.set(0, 0, 0);
     this.sunLight.castShadow = true;
     this.sunLight.shadow.mapSize.set(2048, 2048);
     this.sunLight.shadow.camera.near = 0.5;
-    this.sunLight.shadow.camera.far = 700;
+    this.sunLight.shadow.camera.far = 760;
     this.sunLight.shadow.bias = -0.0004;
     this.sunLight.shadow.normalBias = 0.04;
     this.scene.add(this.sunLight);
+
+    // A very faint directional "fill" coming from the galactic plane so the
+    // night sides of planets are not crushed to pure black — reads as ambient
+    // starlight rather than a visible second light source.
+    this.fillLight = new THREE.DirectionalLight(0x3a4a6a, 0.12);
+    this.fillLight.position.set(0, 1, 0.001);
+    this.scene.add(this.fillLight);
 
     // Loading manager ------------------------------------------------------
     const manager = new THREE.LoadingManager();
@@ -208,24 +217,6 @@ export default class SceneInit {
       this.planets.push(planet);
       this.scene.add(planet.root);
     }
-
-    // Orbit lines (toggleable) --------------------------------------------
-    this.orbitLines = new THREE.Group();
-    this.orbitLines.name = 'orbitLines';
-    for (const p of this.planets) {
-      const line = createOrbitLine(p.data.distance, 256);
-      this.orbitLines.add(line);
-    }
-    // Comet orbits
-    const cometOrbits = [
-      { a: 215, e: 0.6 },
-      { a: 200, e: 0.6 },
-      { a: 270, e: 0.55 },
-    ];
-    for (const c of cometOrbits) {
-      this.orbitLines.add(createEllipseLine(c.a, c.e));
-    }
-    this.scene.add(this.orbitLines);
 
     // Belts ----------------------------------------------------------------
     this.asteroidBelt = createAsteroidBelt();
@@ -284,21 +275,21 @@ export default class SceneInit {
     this.godRays = fx.godRays;
     this.cinematic = fx.cinematic;
     this._fx = fx;
+    this._fx.setSize(window.innerWidth, window.innerHeight);
   }
 
   _addSunLensflare() {
     const flare = new Lensflare();
-    const core = makeFlareTexture(256, 1.0);
     const halo = makeFlareTexture(512, 0.6);
     const ring1 = makeRingTexture(128, 'rgba(255,220,170,0.9)');
     const ring2 = makeRingTexture(96, 'rgba(170,200,255,0.7)');
 
-    flare.addElement(new LensflareElement(core, 512, 0, new THREE.Color(0xffe8c0)));
-    flare.addElement(new LensflareElement(halo, 256, 0, new THREE.Color(0xffb84d)));
-    flare.addElement(new LensflareElement(ring1, 80, 0.6, new THREE.Color(0xffd9a0)));
-    flare.addElement(new LensflareElement(ring2, 60, 0.9, new THREE.Color(0xa0c8ff)));
-    flare.addElement(new LensflareElement(halo, 120, 1.2, new THREE.Color(0xffe8c0)));
-    flare.addElement(new LensflareElement(ring1, 40, 1.6, new THREE.Color(0xffc080)));
+    // Bloom and the corona already handle the solar core. Lensflare is kept
+    // only for subtle optical ghosts across the lens, avoiding a flat coloured
+    // disc over the Sun itself.
+    flare.addElement(new LensflareElement(ring1, 34, 0.58, new THREE.Color(0xd58a45)));
+    flare.addElement(new LensflareElement(ring2, 22, 0.92, new THREE.Color(0x526b91)));
+    flare.addElement(new LensflareElement(halo, 32, 1.25, new THREE.Color(0xc97c42)));
     flare.position.set(0, 0, 0);
     this.lensflare = flare;
     this.scene.add(flare);
@@ -394,7 +385,7 @@ export default class SceneInit {
   }
 
   setOrbitsVisible(v) {
-    if (this.orbitLines) this.orbitLines.visible = v;
+    // Orbit guides were intentionally removed for a cleaner, realistic view.
   }
 
   setBeltsVisible(v) {
@@ -465,6 +456,7 @@ export default class SceneInit {
     const inFront = this._sunScreen.z < 1;
     if (this.godRays) {
       this.godRays.uniforms.uSunPos.value.set(sx, sy);
+      this.godRays.uniforms.uTime.value = t;
       // Fade rays out when the sun is behind the camera or off-screen
       const off = Math.max(0, 1 - Math.abs(sx - 0.5) * 2) * Math.max(0, 1 - Math.abs(sy - 0.5) * 2);
       this.godRays.uniforms.uSunVisible.value = inFront ? off : 0;

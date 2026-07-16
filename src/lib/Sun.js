@@ -2,9 +2,11 @@ import * as THREE from 'three';
 
 // Realistic-ish Sun built from procedural shaders (no static look):
 //  - Surface: animated FBM noise producing granulation + brighter plasma cells,
-//    with a subtle limb darkening.
-//  - Corona: multi-layer additive fresnel glow that pulses gently.
-//  - Prominences: a few curved plasma arcs anchored on the surface that sway.
+//    drifting sunspots (umbra + penumbra) and a physically-correct limb
+//    darkening (center brightest). A thin chromospheric rim tints the edge.
+//  - Corona: streaming additive fresnel glow with animated noise that pulses.
+//  - Prominences: curved plasma arcs anchored on the surface that sway and
+//    "erupt" with a slow breathing scale.
 //  - Optional lens flare is added by SceneInit (uses THREE.Lensflare).
 
 const surfaceVert = /* glsl */ `
@@ -88,56 +90,143 @@ const surfaceFrag = /* glsl */ `
     return s;
   }
 
+  // Cheap value-noise for large-scale features (sunspots / supergranulation)
+  float hash2(vec3 p){
+    p = fract(p*0.3183099+0.1);
+    p *= 17.0;
+    return fract(p.x*p.y*p.z*(p.x+p.y+p.z));
+  }
+  float vnoise(vec3 p){
+    vec3 i=floor(p); vec3 f=fract(p);
+    f=f*f*(3.0-2.0*f);
+    float n000=hash2(i+vec3(0,0,0));
+    float n100=hash2(i+vec3(1,0,0));
+    float n010=hash2(i+vec3(0,1,0));
+    float n110=hash2(i+vec3(1,1,0));
+    float n001=hash2(i+vec3(0,0,1));
+    float n101=hash2(i+vec3(1,0,1));
+    float n011=hash2(i+vec3(0,1,1));
+    float n111=hash2(i+vec3(1,1,1));
+    float nx00=mix(n000,n100,f.x);
+    float nx10=mix(n010,n110,f.x);
+    float nx01=mix(n001,n101,f.x);
+    float nx11=mix(n011,n111,f.x);
+    float nxy0=mix(nx00,nx10,f.y);
+    float nxy1=mix(nx01,nx11,f.y);
+    return mix(nxy0,nxy1,f.z);
+  }
+
   void main() {
-    vec3 p = normalize(vPos) * 2.6;
+    vec3 dir = normalize(vPos);
+    vec3 p = dir * 4.1;
     float t = uTime * 0.12;
     // Two layers of fbm: large plasma cells + finer granulation
     float cells = fbm(p + vec3(0.0, t, 0.0));
-    float fine  = fbm(p * 3.2 - vec3(t * 0.6, 0.0, t * 0.4));
-    float n = cells * 0.7 + fine * 0.3;
-    float heat = smoothstep(-0.2, 0.9, n);
+    float fine  = fbm(p * 4.6 - vec3(t * 0.6, 0.0, t * 0.4));
+    float n = cells * 0.55 + fine * 0.45;
+    float heat = smoothstep(-0.32, 0.68, n);
 
     vec3 col = mix(uColorCool, uColorHot, heat);
     // Bright filament edges where the noise gradient is high
-    float edge = smoothstep(0.55, 0.95, n);
-    col += uColorHot * edge * 0.6;
+    float edge = smoothstep(0.48, 0.88, n);
+    col += uColorHot * edge * 0.16;
 
-    // Limb darkening for a more physical look
+    // Sunspots: slow, big-scale darker blotches that drift with rotation.
+    float spotNoise = vnoise(dir * 3.0 + vec3(t * 0.04, 0.0, -t * 0.03));
+    float spots = smoothstep(0.70, 0.84, spotNoise);
+    // Penumbra: a slightly brighter ring around the dark umbra
+    float penRing = smoothstep(0.64, 0.70, spotNoise) - smoothstep(0.70, 0.75, spotNoise);
+    col = mix(col, col * 0.24, spots);
+    col += uColorHot * penRing * 0.16;
+
+    // Limb darkening (Eddington-ish): CENTER is brightest, edge ~40%.
     float mu = max(dot(vNormal, vViewDir), 0.0);
-    float limb = pow(mu, 0.55);
-    col *= 0.65 + 0.55 * limb;
+    float limb = 0.40 + 0.60 * sqrt(mu);
+    col *= limb;
 
-    // Bright hot rim for the corona transition
-    float rim = pow(1.0 - mu, 2.5);
-    col += uColorHot * rim * 0.5;
+    // Thin chromospheric rim — warm red-orange, only the very edge (subtle)
+    float rim = pow(1.0 - mu, 6.0);
+    col += vec3(1.0, 0.32, 0.10) * rim * 0.8;
+
+    // A small HDR lift lets only the hottest cells bloom; the surface texture
+    // remains visible instead of collapsing into a white disc.
+    col *= 1.06;
 
     gl_FragColor = vec4(col, 1.0);
   }
 `;
 
-const coronaFrag = /* glsl */ `
-  varying vec3 vNormal;
-  varying vec3 vViewDir;
-  uniform vec3 uColor;
-  uniform float uTime;
-  uniform float uIntensity;
+const coronaVert = /* glsl */ `
+  varying vec2 vUv;
   void main() {
-    float mu = max(dot(vNormal, vViewDir), 0.0);
-    float fresnel = pow(1.0 - mu, 3.2);
-    float pulse = 0.85 + 0.15 * sin(uTime * 0.8);
-    float a = fresnel * uIntensity * pulse;
-    gl_FragColor = vec4(uColor * fresnel * 1.8, a);
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
   }
 `;
 
-const coronaVert = /* glsl */ `
-  varying vec3 vNormal;
-  varying vec3 vViewDir;
+// Camera-facing procedural corona. Unlike nested transparent spheres, this
+// has no geometric circular boundary: its wisps fade organically into space.
+const coronaFrag = /* glsl */ `
+  varying vec2 vUv;
+  uniform float uTime;
+
+  float hash(vec2 p) {
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
+  }
+
+  float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x),
+      mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0)), f.x),
+      f.y
+    );
+  }
+
+  float fbm(vec2 p) {
+    float sum = 0.0;
+    float amp = 0.5;
+    for (int i = 0; i < 4; i++) {
+      sum += noise(p) * amp;
+      p = p * 2.03 + 7.1;
+      amp *= 0.5;
+    }
+    return sum;
+  }
+
   void main() {
-    vNormal = normalize(normalMatrix * normal);
-    vec4 mv = modelViewMatrix * vec4(position, 1.0);
-    vViewDir = normalize(-mv.xyz);
-    gl_Position = projectionMatrix * mv;
+    vec2 p = (vUv - 0.5) * 2.0;
+    float r = length(p);
+    float angle = atan(p.y, p.x);
+    float t = uTime * 0.10;
+
+    // The visible solar surface ends around r=0.36 on this plane.
+    float outside = smoothstep(0.32, 0.41, r);
+    float edgeFade = 1.0 - smoothstep(0.72, 1.0, r);
+    float radialFade = exp(-max(r - 0.34, 0.0) * 4.4);
+
+    // Several slowly counter-drifting frequencies prevent a mechanical star.
+    float filaments = 0.5 + 0.5 * sin(angle * 13.0 + t * 2.1 + sin(angle * 5.0 - t));
+    filaments *= 0.55 + 0.45 * sin(angle * 23.0 - t * 1.7) * 0.5 + 0.225;
+    float turbulence = fbm(vec2(angle * 2.8 + t, r * 8.0 - t * 1.4));
+    float rays = pow(clamp(filaments, 0.0, 1.0), 3.0);
+    rays *= 0.45 + turbulence * 0.75;
+
+    float chromosphere = exp(-pow((r - 0.365) * 18.0, 2.0));
+    float corona = outside * radialFade * edgeFade * (0.055 + rays * 0.16);
+    float pulse = 0.94 + 0.06 * sin(uTime * 0.62);
+    float alpha = (chromosphere * 0.34 + corona) * pulse;
+
+    vec3 innerColor = vec3(1.0, 0.38, 0.055);
+    vec3 outerColor = vec3(1.0, 0.73, 0.30);
+    vec3 color = mix(innerColor, outerColor, smoothstep(0.36, 0.78, r));
+    color *= 0.85 + turbulence * 0.35;
+
+    gl_FragColor = vec4(color, alpha);
   }
 `;
 
@@ -150,8 +239,8 @@ export function createSun(radius, manager) {
   const surfMat = new THREE.ShaderMaterial({
     uniforms: {
       uTime: { value: 0 },
-      uColorHot: { value: new THREE.Color(0xffd27a) },
-      uColorCool: { value: new THREE.Color(0xff5a18) },
+      uColorHot: { value: new THREE.Color(0xfff4c7) },
+      uColorCool: { value: new THREE.Color(0xf26b12) },
     },
     vertexShader: surfaceVert,
     fragmentShader: surfaceFrag,
@@ -160,93 +249,26 @@ export function createSun(radius, manager) {
   surface.name = 'sun-surface';
   group.add(surface);
 
-  // Inner corona (tight glow)
-  const coronaGeo = new THREE.SphereGeometry(radius * 1.18, 64, 64);
+  // One soft billboard replaces the former nested corona spheres and torus
+  // prominences. It always faces the camera and fades without a hard edge.
+  const coronaGeo = new THREE.PlaneGeometry(radius * 5.5, radius * 5.5);
   const coronaMat = new THREE.ShaderMaterial({
     uniforms: {
-      uColor: { value: new THREE.Color(0xffb24d) },
       uTime: { value: 0 },
-      uIntensity: { value: 1.1 },
     },
     vertexShader: coronaVert,
     fragmentShader: coronaFrag,
     transparent: true,
     blending: THREE.AdditiveBlending,
-    side: THREE.BackSide,
     depthWrite: false,
   });
   const corona = new THREE.Mesh(coronaGeo, coronaMat);
   corona.name = 'sun-corona';
+  corona.renderOrder = 1;
+  corona.onBeforeRender = (_renderer, _scene, camera) => {
+    corona.quaternion.copy(camera.quaternion);
+  };
   group.add(corona);
-
-  // Outer glow (large soft halo)
-  const haloGeo = new THREE.SphereGeometry(radius * 1.9, 64, 64);
-  const haloMat = new THREE.ShaderMaterial({
-    uniforms: {
-      uColor: { value: new THREE.Color(0xff8a3c) },
-      uTime: { value: 0 },
-      uIntensity: { value: 0.55 },
-    },
-    vertexShader: coronaVert,
-    fragmentShader: coronaFrag,
-    transparent: true,
-    blending: THREE.AdditiveBlending,
-    side: THREE.BackSide,
-    depthWrite: false,
-  });
-  const halo = new THREE.Mesh(haloGeo, haloMat);
-  halo.name = 'sun-halo';
-  group.add(halo);
-
-  // Prominences (plasma arcs). Each is a thin torus oriented at random.
-  const prominences = new THREE.Group();
-  prominences.name = 'sun-prominences';
-  const promCount = 5;
-  const promColors = [0xff7a3a, 0xffb24d, 0xff5a3a, 0xffd27a, 0xff8a3a];
-  for (let i = 0; i < promCount; i++) {
-    const torusR = radius * (0.35 + Math.random() * 0.35);
-    const tubeR = radius * (0.04 + Math.random() * 0.05);
-    const torusGeo = new THREE.TorusGeometry(torusR, tubeR, 12, 64, Math.PI * (0.8 + Math.random() * 0.6));
-    const torusMat = new THREE.ShaderMaterial({
-      uniforms: {
-        uColor: { value: new THREE.Color(promColors[i % promColors.length]) },
-        uTime: { value: 0 },
-        uSeed: { value: Math.random() * 10 },
-      },
-      vertexShader: coronaVert,
-      fragmentShader: /* glsl */ `
-        varying vec3 vNormal;
-        varying vec3 vViewDir;
-        uniform vec3 uColor;
-        uniform float uTime;
-        uniform float uSeed;
-        void main() {
-          float mu = max(dot(vNormal, vViewDir), 0.0);
-          float fresnel = pow(1.0 - mu, 2.0);
-          float pulse = 0.7 + 0.3 * sin(uTime * 1.4 + uSeed * 6.28);
-          gl_FragColor = vec4(uColor, fresnel * 0.55 * pulse);
-        }
-      `,
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    });
-    const torus = new THREE.Mesh(torusGeo, torusMat);
-    // Anchor the arc so it sits on the sun's surface
-    torus.position.set(
-      (Math.random() - 0.5) * radius * 1.2,
-      (Math.random() - 0.5) * radius * 1.2,
-      (Math.random() - 0.5) * radius * 1.2,
-    );
-    const n = torus.position.clone().normalize();
-    torus.lookAt(n.clone().multiplyScalar(radius * 3));
-    torus.rotateX(Math.PI / 2);
-    torus.position.copy(n.multiplyScalar(radius * 1.0));
-    torus.userData.seed = Math.random() * 10;
-    prominences.add(torus);
-  }
-  group.add(prominences);
 
   // Reference mesh (kept for compatibility / picking).
   // We add a transparent proxy sphere so raycasting still hits the sun while
@@ -265,13 +287,7 @@ export function createSun(radius, manager) {
   group.userData.update = (t, dt, speed) => {
     surfMat.uniforms.uTime.value = t;
     coronaMat.uniforms.uTime.value = t;
-    haloMat.uniforms.uTime.value = t;
     surface.rotation.y += dt * 0.05 * speed;
-    prominences.rotation.y += dt * 0.02 * speed;
-    for (const child of prominences.children) {
-      child.material.uniforms.uTime.value = t;
-      child.rotation.z += dt * 0.1 * (child.userData.seed - 5);
-    }
   };
 
   group.userData.proxy = proxy;

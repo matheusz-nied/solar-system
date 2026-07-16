@@ -134,7 +134,7 @@ export class Planet {
         depthWrite: false,
       });
       this.clouds = new THREE.Mesh(cloudGeo, cloudMat);
-      this.clouds.castShadow = false;
+      this.clouds.castShadow = true;
       this.clouds.receiveShadow = true;
       this.tilt.add(this.clouds);
     }
@@ -175,6 +175,7 @@ export class Planet {
       }
       this.ringMesh = new THREE.Mesh(ringGeo, ringMat);
       this.ringMesh.rotation.x = Math.PI / 2;
+      this.ringMesh.castShadow = true;
       this.ringMesh.receiveShadow = true;
       this.ringMesh.userData.planet = this;
       this.ringMesh.userData.id = data.id;

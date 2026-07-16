@@ -5,19 +5,19 @@ import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPa
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
-// Screen-space god rays: radial blur of bright pixels toward the sun's screen
-// position, then additively blended back. Cheap and works with the existing
-// HDR-ish scene produced by the bloom pass.
+// A restrained, analytic solar glare. The previous implementation repeatedly
+// sampled the already-bloomed frame toward the Sun. In a scene with bright
+// orbit lines that turns the whole image into concentric bands. Keeping the
+// glare local to the Sun preserves the sense of brightness without washing out
+// planets, belts and the background.
 const GodRaysShader = {
   uniforms: {
     tDiffuse: { value: null },
     uSunPos: { value: new THREE.Vector2(0.5, 0.5) },
     uSunVisible: { value: 1.0 },
-    uDensity: { value: 0.92 },
-    uWeight: { value: 0.32 },
-    uDecay: { value: 0.94 },
-    uExposure: { value: 0.55 },
-    uThreshold: { value: 0.6 },
+    uAspect: { value: 1.0 },
+    uTime: { value: 0.0 },
+    uIntensity: { value: 0.22 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -31,40 +31,31 @@ const GodRaysShader = {
     uniform sampler2D tDiffuse;
     uniform vec2 uSunPos;
     uniform float uSunVisible;
-    uniform float uDensity;
-    uniform float uWeight;
-    uniform float uDecay;
-    uniform float uExposure;
-    uniform float uThreshold;
+    uniform float uAspect;
+    uniform float uTime;
+    uniform float uIntensity;
+
+    float hash(float n) { return fract(sin(n) * 43758.5453123); }
 
     void main() {
-      vec2 tc = vUv;
-      vec2 dir = uSunPos - tc;
-      float dist = length(dir);
-      dir /= max(dist, 0.0001);
-
-      // Step count scales with distance so far rays are smooth
-      const int MAX_SAMPLES = 80;
-      int samples = int(clamp(dist * float(MAX_SAMPLES) * uDensity, 4.0, float(MAX_SAMPLES)));
-      float stepSize = dist / float(samples);
-      vec2 pos = tc + dir * stepSize * 0.5;
-
-      float illum = 1.0;
-      vec3 accum = vec3(0.0);
-      for (int i = 0; i < MAX_SAMPLES; i++) {
-        if (i >= samples) break;
-        vec3 s = texture2D(tDiffuse, pos).rgb;
-        float l = dot(s, vec3(0.299, 0.587, 0.114));
-        // Only bright pixels contribute to god rays
-        float mask = smoothstep(uThreshold, 1.2, l);
-        accum += s * mask * uWeight * illum;
-        illum *= uDecay;
-        pos += dir * stepSize;
-      }
-
       vec3 base = texture2D(tDiffuse, vUv).rgb;
-      vec3 rays = accum * uExposure * uSunVisible;
-      gl_FragColor = vec4(base + rays, 1.0);
+      vec2 delta = vUv - uSunPos;
+      delta.x *= uAspect;
+      float dist = length(delta);
+      float angle = atan(delta.y, delta.x);
+
+      // Compact glow plus very faint, irregular coronal rays. Both decay fast
+      // enough that the outer planets keep their original colour and contrast.
+      float core = exp(-dist * 28.0);
+      float halo = exp(-dist * 11.0) * 0.34;
+      float spokes = 0.5 + 0.5 * sin(angle * 17.0 + sin(angle * 7.0) * 2.3);
+      spokes *= 0.65 + 0.35 * hash(floor(angle * 15.0));
+      float rays = pow(spokes, 7.0) * exp(-dist * 9.0) * 0.08;
+      float shimmer = 0.96 + 0.04 * sin(uTime * 0.7);
+      vec3 glareColor = mix(vec3(1.0, 0.38, 0.08), vec3(1.0, 0.88, 0.60), core);
+      vec3 glare = glareColor * (core * 0.24 + halo + rays) * shimmer;
+
+      gl_FragColor = vec4(base + glare * uIntensity * uSunVisible, 1.0);
     }
   `,
 };
@@ -75,9 +66,9 @@ const CinematicShader = {
   uniforms: {
     tDiffuse: { value: null },
     uTime: { value: 0 },
-    uVignette: { value: 0.85 },
-    uGrain: { value: 0.045 },
-    uChroma: { value: 0.0015 },
+    uVignette: { value: 0.46 },
+    uGrain: { value: 0.016 },
+    uChroma: { value: 0.0007 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -119,9 +110,12 @@ const CinematicShader = {
       vig = pow(vig, 0.85);
       col *= vig;
 
-      // Slight contrast/lift for filmic tone
-      col = (col - 0.5) * 1.06 + 0.5;
+      // Gentle filmic contrast with a cool lift in the shadows. This keeps
+      // night-side detail readable without turning space grey.
+      col = (col - 0.5) * 1.035 + 0.5;
       col = max(col, 0.0);
+      float shadow = 1.0 - smoothstep(0.02, 0.32, dot(col, vec3(0.299, 0.587, 0.114)));
+      col += vec3(0.006, 0.010, 0.022) * shadow;
 
       // Film grain
       float g = hash(uv * 1024.0 + fract(uTime) * 17.0);
@@ -142,9 +136,9 @@ export function createPostFX(renderer, scene, camera) {
 
   const bloom = new UnrealBloomPass(
     new THREE.Vector2(window.innerWidth, window.innerHeight),
-    0.9,   // strength
-    0.7,   // radius
-    0.75   // threshold
+    0.48,  // strength
+    0.34,  // radius
+    1.02   // threshold: reserve bloom for genuinely emissive highlights
   );
   composer.addPass(bloom);
 
@@ -168,6 +162,7 @@ export function createPostFX(renderer, scene, camera) {
     setSize(w, h) {
       composer.setSize(w, h);
       bloom.setSize(w, h);
+      godRays.uniforms.uAspect.value = w / Math.max(h, 1);
     },
   };
 }

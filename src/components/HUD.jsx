@@ -4,7 +4,6 @@ export function HUD({ scene, onFocus }) {
   const [speed, setSpeed] = useState(1);
   const [paused, setPaused] = useState(false);
   const [showLabels, setShowLabels] = useState(true);
-  const [showOrbits, setShowOrbits] = useState(true);
   const [showBelts, setShowBelts] = useState(true);
   const [showStars, setShowStars] = useState(true);
   const [cinematic, setCinematic] = useState(true);
@@ -29,10 +28,6 @@ export function HUD({ scene, onFocus }) {
   useEffect(() => {
     scene.current?.setLabelsVisible(showLabels);
   }, [showLabels, scene]);
-
-  useEffect(() => {
-    scene.current?.setOrbitsVisible(showOrbits);
-  }, [showOrbits, scene]);
 
   useEffect(() => {
     scene.current?.setBeltsVisible(showBelts);
@@ -133,7 +128,6 @@ export function HUD({ scene, onFocus }) {
 
         <div className="hud-toggles">
           {toggle('Labels', showLabels, setShowLabels)}
-          {toggle('Órbitas', showOrbits, setShowOrbits)}
           {toggle('Cinturões', showBelts, setShowBelts)}
           {toggle('Estrelas', showStars, setShowStars)}
           {toggle('Cinema', cinematic, setCinematic)}
