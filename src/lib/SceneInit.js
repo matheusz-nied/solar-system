@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { CSS2DRenderer } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
-import { Lensflare, LensflareElement } from 'three/examples/jsm/objects/Lensflare.js';
 import Stats from 'three/examples/jsm/libs/stats.module.js';
 
 import { SUN_RADIUS, SUN_INFO, PLANET_DATA } from './planetData';
@@ -15,38 +14,6 @@ import { createComets } from './Comet';
 import { createPostFX } from './PostFX';
 
 const SCENE_RADIUS = 1800;
-
-// Procedural lens flare textures (canvas-generated, no external assets).
-function makeFlareTexture(size, inner) {
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const ctx = c.getContext('2d');
-  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  g.addColorStop(0, `rgba(255,255,255,${inner})`);
-  g.addColorStop(0.18, `rgba(255,255,255,${inner * 0.16})`);
-  g.addColorStop(0.55, `rgba(255,255,255,${inner * 0.025})`);
-  g.addColorStop(1, 'rgba(255,255,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
-function makeRingTexture(size, color) {
-  const c = document.createElement('canvas');
-  c.width = c.height = size;
-  const ctx = c.getContext('2d');
-  ctx.translate(size / 2, size / 2);
-  ctx.strokeStyle = color;
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(0, 0, size / 2 - 1, 0, Math.PI * 2);
-  ctx.stroke();
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
 
 export default class SceneInit {
   constructor(canvasId) {
@@ -198,9 +165,6 @@ export default class SceneInit {
     // Expose a representative mesh for compatibility (some code expects this.sun)
     this.sunMesh = this.sun.userData.proxy;
 
-    // Lens flare attached to the sun
-    this._addSunLensflare();
-
     // Background objects ---------------------------------------------------
     this.starField = createStarField({ count: 9000, radius: SCENE_RADIUS });
     this.scene.add(this.starField);
@@ -276,23 +240,6 @@ export default class SceneInit {
     this.cinematic = fx.cinematic;
     this._fx = fx;
     this._fx.setSize(window.innerWidth, window.innerHeight);
-  }
-
-  _addSunLensflare() {
-    const flare = new Lensflare();
-    const halo = makeFlareTexture(512, 0.6);
-    const ring1 = makeRingTexture(128, 'rgba(255,220,170,0.9)');
-    const ring2 = makeRingTexture(96, 'rgba(170,200,255,0.7)');
-
-    // Bloom and the corona already handle the solar core. Lensflare is kept
-    // only for subtle optical ghosts across the lens, avoiding a flat coloured
-    // disc over the Sun itself.
-    flare.addElement(new LensflareElement(ring1, 34, 0.58, new THREE.Color(0xd58a45)));
-    flare.addElement(new LensflareElement(ring2, 22, 0.92, new THREE.Color(0x526b91)));
-    flare.addElement(new LensflareElement(halo, 32, 1.25, new THREE.Color(0xc97c42)));
-    flare.position.set(0, 0, 0);
-    this.lensflare = flare;
-    this.scene.add(flare);
   }
 
   _handleClick(e) {

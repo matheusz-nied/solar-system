@@ -206,25 +206,31 @@ const coronaFrag = /* glsl */ `
 
     // The visible solar surface ends around r=0.36 on this plane.
     float outside = smoothstep(0.32, 0.41, r);
-    float edgeFade = 1.0 - smoothstep(0.72, 1.0, r);
-    float radialFade = exp(-max(r - 0.34, 0.0) * 4.4);
+    float edgeFade = 1.0 - smoothstep(0.64, 0.94, r);
+    float radialFade = exp(-max(r - 0.34, 0.0) * 5.8);
 
-    // Several slowly counter-drifting frequencies prevent a mechanical star.
-    float filaments = 0.5 + 0.5 * sin(angle * 13.0 + t * 2.1 + sin(angle * 5.0 - t));
-    filaments *= 0.55 + 0.45 * sin(angle * 23.0 - t * 1.7) * 0.5 + 0.225;
-    float turbulence = fbm(vec2(angle * 2.8 + t, r * 8.0 - t * 1.4));
-    float rays = pow(clamp(filaments, 0.0, 1.0), 3.0);
-    rays *= 0.45 + turbulence * 0.75;
+    // Sample noise in circular coordinates to avoid repeated, evenly spaced
+    // rays. Two slowly drifting layers create broad asymmetric plasma wisps.
+    vec2 radial = vec2(cos(angle), sin(angle));
+    vec2 tangent = vec2(-radial.y, radial.x);
+    vec2 driftA = vec2(t * 0.34, -t * 0.22);
+    vec2 driftB = vec2(-t * 0.17, t * 0.29);
+    float curl = sin(r * 11.0 - t * 1.2) * max(r - 0.34, 0.0) * 2.6;
+    float broad = fbm(radial * (2.1 + r * 1.7) + tangent * curl + driftA);
+    float detail = fbm(radial * (4.8 + r * 2.2) - tangent * curl * 1.4 + driftB);
+    float turbulence = broad * 0.68 + detail * 0.32;
+    float wisps = smoothstep(0.34, 0.78, turbulence);
+    float asymmetry = 0.90 + 0.10 * sin(angle * 3.0 + broad * 5.0 + t * 0.7);
 
     float chromosphere = exp(-pow((r - 0.365) * 18.0, 2.0));
-    float corona = outside * radialFade * edgeFade * (0.055 + rays * 0.16);
-    float pulse = 0.94 + 0.06 * sin(uTime * 0.62);
-    float alpha = (chromosphere * 0.34 + corona) * pulse;
+    float corona = outside * radialFade * edgeFade * (0.032 + wisps * 0.052) * asymmetry;
+    float pulse = 0.975 + 0.025 * sin(uTime * 0.48);
+    float alpha = (chromosphere * 0.20 + corona) * pulse;
 
     vec3 innerColor = vec3(1.0, 0.38, 0.055);
     vec3 outerColor = vec3(1.0, 0.73, 0.30);
     vec3 color = mix(innerColor, outerColor, smoothstep(0.36, 0.78, r));
-    color *= 0.85 + turbulence * 0.35;
+    color *= 0.88 + turbulence * 0.24;
 
     gl_FragColor = vec4(color, alpha);
   }

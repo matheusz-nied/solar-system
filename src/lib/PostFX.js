@@ -17,7 +17,7 @@ const GodRaysShader = {
     uSunVisible: { value: 1.0 },
     uAspect: { value: 1.0 },
     uTime: { value: 0.0 },
-    uIntensity: { value: 0.22 },
+    uIntensity: { value: 0.16 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -35,25 +35,18 @@ const GodRaysShader = {
     uniform float uTime;
     uniform float uIntensity;
 
-    float hash(float n) { return fract(sin(n) * 43758.5453123); }
-
     void main() {
       vec3 base = texture2D(tDiffuse, vUv).rgb;
       vec2 delta = vUv - uSunPos;
       delta.x *= uAspect;
       float dist = length(delta);
-      float angle = atan(delta.y, delta.x);
-
-      // Compact glow plus very faint, irregular coronal rays. Both decay fast
-      // enough that the outer planets keep their original colour and contrast.
-      float core = exp(-dist * 28.0);
-      float halo = exp(-dist * 11.0) * 0.34;
-      float spokes = 0.5 + 0.5 * sin(angle * 17.0 + sin(angle * 7.0) * 2.3);
-      spokes *= 0.65 + 0.35 * hash(floor(angle * 15.0));
-      float rays = pow(spokes, 7.0) * exp(-dist * 9.0) * 0.08;
-      float shimmer = 0.96 + 0.04 * sin(uTime * 0.7);
+      // A compact optical glow with no synthetic starburst spikes. Fine
+      // structure belongs to the physical corona rendered around the Sun.
+      float core = exp(-dist * 34.0);
+      float halo = exp(-dist * 15.0) * 0.24;
+      float shimmer = 0.98 + 0.02 * sin(uTime * 0.52);
       vec3 glareColor = mix(vec3(1.0, 0.38, 0.08), vec3(1.0, 0.88, 0.60), core);
-      vec3 glare = glareColor * (core * 0.24 + halo + rays) * shimmer;
+      vec3 glare = glareColor * (core * 0.20 + halo) * shimmer;
 
       gl_FragColor = vec4(base + glare * uIntensity * uSunVisible, 1.0);
     }
