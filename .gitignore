@@ -2,26 +2,39 @@
 node_modules/
 package-lock.json
 yarn.lock
+<<<<<<< HEAD
 pnpm-lock.yaml
+=======
+>>>>>>> v-minimax-m3
 
 # Build outputs
 dist/
 build/
+<<<<<<< HEAD
 *.bundle.js
 
 # Vite
 .vite/
 .cache/
+=======
+
+# Vite
+.vite/
+>>>>>>> v-minimax-m3
 
 # Environment variables
 .env
 .env.local
 .env.*.local
+<<<<<<< HEAD
 .env.production.local
+=======
+>>>>>>> v-minimax-m3
 
 # IDE & Editor
 .vscode/
 .idea/
+<<<<<<< HEAD
 .DS_Store
 .vscode-settings.json
 *.sublime-project
@@ -38,12 +51,24 @@ build/
 # OS files
 Thumbs.db
 *.log
+=======
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+>>>>>>> v-minimax-m3
 
 # Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+<<<<<<< HEAD
 lerna-debug.log*
 
 # Development
@@ -59,3 +84,9 @@ lerna-debug.log*
 # Misc
 .DS_Store
 *.pem
+=======
+
+# Development
+.cache/
+*.tsbuildinfo
+>>>>>>> v-minimax-m3
