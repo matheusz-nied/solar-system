@@ -10,8 +10,14 @@ export function useScene() {
     const scene = new SceneInit('myThreeJsCanvas');
     sceneRef.current = scene;
     scene.onLoadingProgress(setProgress);
+    scene.onLoad(() => {
+      // Give the GPU a frame to settle before hiding the loader
+      requestAnimationFrame(() => setLoading(false));
+    });
     scene.initialize();
-    setLoading(false);
+
+    // Safety fallback in case the loading manager never fires onLoad
+    const fallback = setTimeout(() => setLoading(false), 6000);
 
     let raf;
     const tick = () => {
@@ -22,6 +28,7 @@ export function useScene() {
 
     return () => {
       cancelAnimationFrame(raf);
+      clearTimeout(fallback);
     };
   }, []);
 
